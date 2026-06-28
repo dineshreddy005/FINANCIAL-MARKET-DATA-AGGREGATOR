@@ -1,9 +1,15 @@
-// Vite only exposes import.meta.env.VITE_* to client code -- see .env.example.
-// Defaults match the backend's docker-compose port mapping so the app works
-// out of the box with zero configuration.
+// Auto-detect environment at runtime based on hostname.
+// This avoids issues with Vite env vars being baked incorrectly at build time.
+const isLocal = typeof window !== 'undefined' && (
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1'
+);
+
 const PROD_API = 'https://financial-market-data-aggregatorfmda.onrender.com';
 const PROD_WS  = 'wss://financial-market-data-aggregatorfmda.onrender.com';
+const LOCAL_API = 'http://localhost:8000';
+const LOCAL_WS  = 'ws://localhost:8000';
 
-export const API_BASE = import.meta.env.VITE_API_BASE || (import.meta.env.PROD ? PROD_API : 'http://localhost:8000');
-export const WS_URL = (import.meta.env.VITE_WS_BASE || (import.meta.env.PROD ? PROD_WS : 'ws://localhost:8000')) + '/ws/live';
+export const API_BASE = isLocal ? LOCAL_API : PROD_API;
+export const WS_URL   = (isLocal ? LOCAL_WS : PROD_WS) + '/ws/live';
 
