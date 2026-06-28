@@ -1,0 +1,27 @@
+# Node.js
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints
+.venv/
+venv/
+
+# Databases and Environment configuration files (critical secrets protection)
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+*.db
+*.sqlite3
+
+# IDEs and System files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
