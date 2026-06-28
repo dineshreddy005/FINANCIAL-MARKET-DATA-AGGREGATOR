@@ -175,7 +175,8 @@ class RedisCircuitBreaker:
             result = await self._call_with_retry(fn, *args, **kwargs)
             await self.record_success()
             if cache_key is not None:
-                await self.cache_result(cache_key, str(result))
+                import json
+                await self.cache_result(cache_key, json.dumps(result, default=str))
             return result
         except Exception as exc:  # noqa: BLE001 -- deliberately broad: ANY failure trips the breaker
             await self.record_failure()
