@@ -4,6 +4,8 @@ Centralized configuration. Everything that varies between dev/staging/prod
 See .env.example for the full list.
 """
 from functools import lru_cache
+from typing import Any
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -35,6 +37,22 @@ class Settings(BaseSettings):
 
     # --- CORS ---------------------------------------------------------------
     allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:8000"]
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v: Any) -> list[str]:
+        """Accept JSON array string '["a","b"]', plain '*', or comma-separated 'a,b'."""
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            # JSON array: ["https://...", "https://..."]
+            if v.startswith("["):
+                import json
+                return json.loads(v)
+            # Bare wildcard or comma-separated list
+            return [i.strip() for i in v.split(",") if i.strip()]
+        return v
 
     # --- Caching layer (requirement 6) --------------------------------------
     # LIVE: tick-level price responses that must look fresh on the dashboard.
