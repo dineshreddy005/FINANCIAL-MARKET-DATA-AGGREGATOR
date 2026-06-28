@@ -133,34 +133,40 @@ async def stream_loop(stock_symbols: list[str], crypto_ids: list[str], interval_
     while True:
         try:
             if crypto_ids:
-                raw_crypto = await coingecko_breaker.call(
-                    _fetch_coingecko, crypto_ids,
-                    cache_key="markets:" + ",".join(crypto_ids),
-                    rate_limit=settings.coingecko_rate_limit,
-                    rate_window=settings.coingecko_rate_window_seconds,
-                )
-                if isinstance(raw_crypto, str):  # came back from cache as a JSON string
-                    raw_crypto = json.loads(raw_crypto)
-                ticks = [normalize_coingecko_quote(r) for r in raw_crypto]
-                async with session_scope() as session:
-                    await upsert_ticks(session, ticks)
-                for t in ticks:
-                    await manager.broadcast(t.model_dump())
+                try:
+                    raw_crypto = await coingecko_breaker.call(
+                        _fetch_coingecko, crypto_ids,
+                        cache_key="markets:" + ",".join(crypto_ids),
+                        rate_limit=settings.coingecko_rate_limit,
+                        rate_window=settings.coingecko_rate_window_seconds,
+                    )
+                    if isinstance(raw_crypto, str):  # came back from cache as a JSON string
+                        raw_crypto = json.loads(raw_crypto)
+                    ticks = [normalize_coingecko_quote(r) for r in raw_crypto]
+                    async with session_scope() as session:
+                        await upsert_ticks(session, ticks)
+                    for t in ticks:
+                        await manager.broadcast(t.model_dump())
+                except Exception as exc:
+                    logger.warning("crypto streaming update failed: %s", exc)
 
             if stock_symbols:
-                raw_stocks = await yfinance_breaker.call(
-                    _fetch_yfinance, stock_symbols,
-                    cache_key="quotes:" + ",".join(stock_symbols),
-                    rate_limit=settings.yfinance_rate_limit,
-                    rate_window=settings.yfinance_rate_window_seconds,
-                )
-                if isinstance(raw_stocks, str):
-                    raw_stocks = json.loads(raw_stocks)
-                ticks = [normalize_yfinance_quote(r) for r in raw_stocks]
-                async with session_scope() as session:
-                    await upsert_ticks(session, ticks)
-                for t in ticks:
-                    await manager.broadcast(t.model_dump())
+                try:
+                    raw_stocks = await yfinance_breaker.call(
+                        _fetch_yfinance, stock_symbols,
+                        cache_key="quotes:" + ",".join(stock_symbols),
+                        rate_limit=settings.yfinance_rate_limit,
+                        rate_window=settings.yfinance_rate_window_seconds,
+                    )
+                    if isinstance(raw_stocks, str):
+                        raw_stocks = json.loads(raw_stocks)
+                    ticks = [normalize_yfinance_quote(r) for r in raw_stocks]
+                    async with session_scope() as session:
+                        await upsert_ticks(session, ticks)
+                    for t in ticks:
+                        await manager.broadcast(t.model_dump())
+                except Exception as exc:
+                    logger.warning("stock streaming update failed: %s", exc)
 
         except Exception as exc:  # noqa: BLE001 -- never let the loop die
             logger.error("stream_loop iteration failed: %s", exc)
