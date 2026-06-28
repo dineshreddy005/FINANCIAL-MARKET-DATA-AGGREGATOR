@@ -4,8 +4,6 @@ Centralized configuration. Everything that varies between dev/staging/prod
 See .env.example for the full list.
 """
 from functools import lru_cache
-from typing import Any
-from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -36,23 +34,22 @@ class Settings(BaseSettings):
     yfinance_rate_window_seconds: int = 60
 
     # --- CORS ---------------------------------------------------------------
-    allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:8000"]
+    # Stored as a raw string so pydantic-settings never tries to JSON-parse it.
+    # Accepts: "*", "https://a.com", "https://a.com,https://b.com",
+    # or a JSON array string '["https://a.com"]'.
+    allowed_origins: str = "http://localhost:5173,http://localhost:8000"
 
-    @field_validator("allowed_origins", mode="before")
-    @classmethod
-    def parse_allowed_origins(cls, v: Any) -> list[str]:
-        """Accept JSON array string '["a","b"]', plain '*', or comma-separated 'a,b'."""
-        if isinstance(v, list):
-            return v
-        if isinstance(v, str):
-            v = v.strip()
-            # JSON array: ["https://...", "https://..."]
-            if v.startswith("["):
-                import json
+    @property
+    def cors_origins(self) -> list[str]:
+        """Return a proper list of allowed origins for FastAPI CORSMiddleware."""
+        import json
+        v = self.allowed_origins.strip()
+        if v.startswith("["):
+            try:
                 return json.loads(v)
-            # Bare wildcard or comma-separated list
-            return [i.strip() for i in v.split(",") if i.strip()]
-        return v
+            except Exception:
+                pass
+        return [i.strip() for i in v.split(",") if i.strip()]
 
     # --- Caching layer (requirement 6) --------------------------------------
     # LIVE: tick-level price responses that must look fresh on the dashboard.

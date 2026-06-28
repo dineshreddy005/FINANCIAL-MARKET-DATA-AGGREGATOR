@@ -30,7 +30,7 @@ app = FastAPI(
 app.add_middleware(GZipMiddleware, minimum_size=1024)  # compress large JSON responses
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["*"],
