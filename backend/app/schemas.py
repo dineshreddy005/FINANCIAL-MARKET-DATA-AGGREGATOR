@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 AssetType = Literal["equity", "crypto", "fx", "index"]
-SourceName = Literal["yfinance", "coingecko", "eod_csv", "eod_json"]
+SourceName = Literal["yfinance", "coingecko", "finnhub", "eod_csv", "eod_json"]
 
 
 class NormalizedTick(BaseModel):

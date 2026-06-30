@@ -69,6 +69,7 @@ class Settings(BaseSettings):
 
     # --- Data Providers ------------------------------------------------------
     finnhub_api_key: str = ""
+    finnhub_webhook_secret: str = ""
 
     mock_services: bool = False
 

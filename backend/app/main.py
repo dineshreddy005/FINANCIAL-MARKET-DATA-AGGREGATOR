@@ -13,7 +13,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from app.config import get_settings
 from app.ingestion.websocket_feed import stream_loop
-from app.routers import accounts, audit, auth, ingest, insights, market
+from app.routers import accounts, audit, auth, ingest, insights, market, webhook
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 settings = get_settings()
@@ -43,6 +43,7 @@ app.include_router(ingest.ws_router)
 app.include_router(accounts.router)
 app.include_router(audit.router)
 app.include_router(insights.router)
+app.include_router(webhook.router)
 
 _stream_task: asyncio.Task | None = None
 
@@ -59,7 +60,8 @@ async def start_background_ingestion():
     # Demo symbol universe -- swap for a configurable watchlist later.
     stock_symbols = ["AAPL", "MSFT", "TSLA"]
     crypto_ids = ["bitcoin", "ethereum", "solana"]
-    _stream_task = asyncio.create_task(stream_loop(stock_symbols, crypto_ids, interval_seconds=5))
+    global_indices = ["^GSPC", "^FTSE", "^N225", "^GDAXI", "^HSI"]
+    _stream_task = asyncio.create_task(stream_loop(stock_symbols, crypto_ids, global_indices, interval_seconds=5))
 
 
 @app.on_event("shutdown")
