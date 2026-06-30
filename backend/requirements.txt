@@ -13,3 +13,4 @@ yfinance==0.2.40
 python-jose[cryptography]==3.3.0
 python-multipart==0.0.9
 anthropic>=0.28.0
+websockets>=12.0

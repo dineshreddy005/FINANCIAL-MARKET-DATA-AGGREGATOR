@@ -24,13 +24,14 @@ from datetime import datetime, timezone
 from typing import Iterable
 
 import httpx
+import websockets
 from fastapi import WebSocket
 
 from app.cache import get_redis
 from app.circuit_breaker import TransientProviderError, get_breaker
 from app.config import get_settings
 from app.database import session_scope
-from app.normalizer import normalize_coingecko_quote, normalize_yfinance_quote, upsert_ticks
+from app.normalizer import normalize_coingecko_quote, normalize_finnhub_trade, upsert_ticks
 
 logger = logging.getLogger("fmda.stream")
 settings = get_settings()
@@ -87,38 +88,31 @@ async def _fetch_coingecko(symbols: Iterable[str]) -> list[dict]:
         raise TransientProviderError(str(exc)) from exc
 
 
-async def _fetch_yfinance(symbols: Iterable[str]) -> list[dict]:
-    """
-    yfinance is a synchronous/blocking library, so it's run in a thread to
-    avoid stalling the event loop -- important for the websocket fan-out
-    happening concurrently for other clients.
-    """
-    import yfinance as yf
+async def finnhub_stream_loop(symbols: list[str]) -> None:
+    if not settings.finnhub_api_key or not symbols:
+        logger.warning("Finnhub stream disabled: missing API key or symbols")
+        return
 
-    def _blocking() -> list[dict]:
-        out = []
-        tickers = yf.Tickers(" ".join(symbols))
-        for sym in symbols:
-            try:
-                info = tickers.tickers[sym].fast_info
-                out.append({
-                    "symbol": sym,
-                    "last_price": info.get("lastPrice"),
-                    "open": info.get("open"),
-                    "day_high": info.get("dayHigh"),
-                    "day_low": info.get("dayLow"),
-                    "volume": info.get("lastVolume"),
-                    "currency": info.get("currency", "USD"),
-                    "timestamp": datetime.now(timezone.utc),
-                })
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("yfinance fetch failed for %s: %s", sym, exc)
-        return out
-
-    try:
-        return await asyncio.to_thread(_blocking)
-    except Exception as exc:  # noqa: BLE001
-        raise TransientProviderError(str(exc)) from exc
+    uri = f"wss://ws.finnhub.io?token={settings.finnhub_api_key}"
+    while True:
+        try:
+            async with websockets.connect(uri) as websocket:
+                # Subscribe to all requested symbols
+                for symbol in symbols:
+                    await websocket.send(json.dumps({"type": "subscribe", "symbol": symbol}))
+                
+                async for message in websocket:
+                    data = json.loads(message)
+                    if data.get("type") == "trade":
+                        ticks = [normalize_finnhub_trade(t) for t in data.get("data", [])]
+                        if ticks:
+                            async with session_scope() as session:
+                                await upsert_ticks(session, ticks)
+                            for t in ticks:
+                                await manager.broadcast(t.model_dump())
+        except Exception as exc:
+            logger.error("Finnhub websocket error: %s", exc)
+            await asyncio.sleep(5)
 
 
 # ---------------------------------------------------------------------------
@@ -128,8 +122,12 @@ async def _fetch_yfinance(symbols: Iterable[str]) -> list[dict]:
 async def stream_loop(stock_symbols: list[str], crypto_ids: list[str], interval_seconds: int = 5) -> None:
     redis_client = await get_redis()
     coingecko_breaker = get_breaker("coingecko", redis_client)
-    yfinance_breaker = get_breaker("yfinance", redis_client)
+    
+    # Start the Finnhub background websocket for stocks
+    if settings.finnhub_api_key and stock_symbols:
+        asyncio.create_task(finnhub_stream_loop(stock_symbols))
 
+    # The while loop is now just for CoinGecko polling
     while True:
         try:
             if crypto_ids:
@@ -149,24 +147,6 @@ async def stream_loop(stock_symbols: list[str], crypto_ids: list[str], interval_
                         await manager.broadcast(t.model_dump())
                 except Exception as exc:
                     logger.warning("crypto streaming update failed: %s", exc)
-
-            if stock_symbols:
-                try:
-                    raw_stocks = await yfinance_breaker.call(
-                        _fetch_yfinance, stock_symbols,
-                        cache_key="quotes:" + ",".join(stock_symbols),
-                        rate_limit=settings.yfinance_rate_limit,
-                        rate_window=settings.yfinance_rate_window_seconds,
-                    )
-                    if isinstance(raw_stocks, str):
-                        raw_stocks = json.loads(raw_stocks)
-                    ticks = [normalize_yfinance_quote(r) for r in raw_stocks]
-                    async with session_scope() as session:
-                        await upsert_ticks(session, ticks)
-                    for t in ticks:
-                        await manager.broadcast(t.model_dump())
-                except Exception as exc:
-                    logger.warning("stock streaming update failed: %s", exc)
 
         except Exception as exc:  # noqa: BLE001 -- never let the loop die
             logger.error("stream_loop iteration failed: %s", exc)

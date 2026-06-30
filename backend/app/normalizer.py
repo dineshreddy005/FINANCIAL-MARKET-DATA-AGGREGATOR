@@ -74,6 +74,22 @@ def normalize_coingecko_quote(raw: dict) -> NormalizedTick:
     )
 
 
+def normalize_finnhub_trade(raw: dict) -> NormalizedTick:
+    """raw is one trade object from Finnhub's websocket."""
+    from datetime import datetime, timezone
+
+    event_time = datetime.fromtimestamp(raw["t"] / 1000.0, tz=timezone.utc).isoformat()
+    return NormalizedTick(
+        symbol=raw["s"],
+        asset_type="equity",
+        source="finnhub",
+        event_time=event_time,
+        price=raw["p"],
+        volume=raw["v"],
+        currency="USD",
+    )
+
+
 def normalize_eod_row(row: dict, *, fmt: Literal["eod_csv", "eod_json"] = "eod_csv") -> NormalizedTick:
     """
     A single row from an EOD batch file. Handles the common column-name
